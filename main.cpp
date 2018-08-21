@@ -1,13 +1,17 @@
 // 2018/8/13 11:25 于杭州
+#include <OpenMesh/Core/IO/MeshIO.hh>
+#include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <fstream>
-#include "shader.h"
-#include "JointChain.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include "Paint.h"
-//#include <openMesh/Core/IO/MeshIO.hh>
+#include "shader.h"
+#include "JointChain.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #define PI 3.1415926535
 using namespace std;
+typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
 
 // Function declare
 // -------------------------------------------------
@@ -22,8 +26,8 @@ void class_test();
 
 // Global varibles
 // --------------------------------------------------
-const int SCR_WIDTH = 800;
-const int SCR_HEIGHT = 600;
+const float SCR_WIDTH = 800;
+const float SCR_HEIGHT = 600;
 const int JointNum = 7;
 const int SLICE_Z = 20, SLICE_XY = 20;
 float * JointLength = NULL;
@@ -32,11 +36,11 @@ float Pitch = 0;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 float lastX = 400, lastY = 300;
-VectorXd cameraPos = VectorXd::Zero(3);
-VectorXd cameraFront = VectorXd::Zero(3);
-VectorXd cameraUp = VectorXd::Zero(3);
-GLfloat sphere[SLICE_Z * SLICE_XY * 3] = {};
-GLfloat sphereIndices;
+vec3 cameraPos = vec3(0.0, 0.0, 0.0); // 位置
+vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);	//摄像机面向
+vec3 cameraUp = vec3(0.0f, 1.0f, 0.0f);//上轴
+
+GLfloat sphere[72000];
 
 int main(int argc, char** argv)
 {
@@ -49,19 +53,66 @@ int main(int argc, char** argv)
 		cout << "ERROR:GL_Init failed." << endl;
 	}
 
-	// calculate sphere
-
+	// read model mesh 
+	MyMesh mesh;
+	int i = 0, j = 0;
+	if (!OpenMesh::IO::read_mesh(mesh, "ball.obj"))
+	{
+		std::cerr << "read error\n";
+		exit(1);
+	}
+	
+	memset(sphere, 0, sizeof(GLfloat) * 72000);
+	for (MyMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it, ++j) {
+		i = 0;
+		for (MyMesh::FaceVertexIter fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it, ++i)
+		{
+			float * tmp = mesh.point(*fv_it).data();
+			sphere[3 * (j * 3 + i) + 0] = tmp[0] / 50 - 0.2;
+			sphere[3 * (j * 3 + i) + 1] = tmp[1] / 50 - 0.2;
+			sphere[3 * (j * 3 + i) + 2] = tmp[2] / 50 - 0.2;
+		}
+		if( j == mesh.n_faces()) 
+			cout << j << endl;
+	}
 
 	// initialize Shader
 	Shader OurShader = Shader("./shader.vs", "./shader.fs");
+	OurShader.use();
 
 	// initialize JointChain
-	JointChain *P = JointInit();
-	if (!P)
+	VectorXd initPos = VectorXd::Zero(4);
+	initPos[3] = 1;
+	double *length = new double[JointNum];
+	for (int i = 0; i < JointNum; i++) length[i] = 1;
+	JointChain *J = new JointChain(initPos, JointNum, length);
+	if (!J)
 	{
 		cout << "ERROR:JointInit Failed!" << endl;
 		return -1;
 	}
+
+	// initilize VAO & VBO
+	unsigned int VBO, VAO;
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(sphere), sphere, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+	glEnableVertexAttribArray(0);
+
+	// set view
+	float screenWidth = 800, screenHeight = 600;
+	mat4 model, view, projection;
+	model = rotate(model, radians(0.0f), vec3(0.0f, 0.0f, 1.0f));// model matrix
+	view = translate(view, vec3(0.0f, 0.0f, -1.0f));//观察矩阵
+	projection = perspective(radians(45.0f), screenWidth / screenHeight, 0.1f, 100.0f);//投影矩阵
+	OurShader.setMat4("view", view);
+	OurShader.setMat4("projection", projection);
+	OurShader.setMat4("model", model);
 
 	// MainLoop
 	while (!glfwWindowShouldClose(window))
@@ -69,18 +120,50 @@ int main(int argc, char** argv)
 		// process input & mouse 
 		processInput(window);
 
+		view = lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+		OurShader.setMat4("view", view);
+
 		// clear buffer & depth test
 		glEnable(GL_DEPTH_TEST);
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// render
-		cout << "render." << endl;
+		//cout << "render." << endl;
+		OurShader.use();
+		glBindVertexArray(VAO);
+		VectorXd * pos = J->GetState();
+		J->SetTheta(1, 2, (float)glfwGetTime());
+		//J->SetTheta(1, 1, (float)glfwGetTime());
+		//J->SetTheta(3, 2, (float)glfwGetTime());
 
+		for (int i = 0; i < JointNum; i++)
+		{
+			vec3 tmp;
+			tmp.x = pos[i][0];
+			tmp.y = pos[i][1];
+			tmp.z = pos[i][2];
+			cout << pos[i] << endl;
+			mat4 model;
+			model = translate(model, tmp);
+			OurShader.setMat4("model", model);
+			glDrawArrays(GL_TRIANGLES, 0, 72000);
+		}
+		
+		
 		// swap buffer
 		glfwSwapBuffers(window);
 		glfwPollEvents();
+
+		// set Frame time & speed
+		float currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
 	}
+
+	// glfw: terminate, clearing all previously allocated GLFW resources.
+	// ------------------------------------------------------------------
+	glfwTerminate();
 	return 0;
 }
 
@@ -143,6 +226,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {//鼠标回调函数
  // 计算当前位置和现在位置的差，改变两个角度，然后计算方向向量。
+	
 	float xoffset = xpos - lastX;
 	float yoffset = lastY - ypos;//y坐标从底到顶依次增大。
 	lastX = xpos;
@@ -157,13 +241,12 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 	Pitch = Pitch < -89.0f ? -89.0f : Pitch;
 
 	// calculate front
-	/*
-	VectorXd front = VectorXd(0, 0, 0);
+	vec3 front;
 	front.x = cos(radians(Yaw))*cos(radians(Pitch));
 	front.y = sin(radians(Pitch));
 	front.z = sin(radians(Yaw))*cos(radians(Pitch));
 	cameraFront = front;
-	*/
+	
 }
 
 int processInput(GLFWwindow *window)
@@ -178,7 +261,14 @@ int processInput(GLFWwindow *window)
 	if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)	return GLFW_KEY_DOWN;
 	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)	return GLFW_KEY_RIGHT;
 	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)	return GLFW_KEY_LEFT;
-
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		cameraPos += cameraSpeed * cameraFront; // 沿着摄像机指向往前走。
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+		cameraPos -= cameraSpeed * cameraFront;
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+		cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+		cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
 	return 0;
 }
 
