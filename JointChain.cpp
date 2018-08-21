@@ -4,8 +4,8 @@ using namespace std;
 
 JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 {
-	assert(Pos0.rows() == 3);
-	assert(Pos0[2] == 1);
+	assert(Pos0.rows() == 4);
+	assert(Pos0[3] == 1);
 
 	//Pos0 must be general coordinates
 	JointNum = Num;
@@ -18,44 +18,52 @@ JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 		//cout << Pos0;
 		Pos[i] = Pos0;
 		chain[i].SetPos(Pos0);
-		chain[i].SetTheta(0);
+
+		chain[i].SetTheta(0, 0);
+		chain[i].SetTheta(1, 0);
+		chain[i].SetTheta(2, 0);
+
 		chain[i].SetLength(length[i]);
-		VectorXd tmp = VectorXd::Zero(3);
+		VectorXd tmp = VectorXd::Zero(4);
 		tmp(0) = length[i];
-		tmp(2) = 1;
+		tmp(3) = 1;
 		//cout << tmp;
 		tmp = (*chain[i].GetRot())*tmp;
 		//cout << tmp;
 		//cout << Pos0;
 		Pos0 += tmp;
-		Pos0[2] = 1;
+		Pos0[3] = 1;
 	}
 	Pos[Num] = Pos0;
 }
 
-int JointChain::SetTheta(int id, double theta)
+int JointChain::SetTheta(int id, int xyz, double theta)
 {
 	VectorXd Pos0 = Pos[id];
-	chain[id].SetTheta(theta);
+ 	chain[id].SetTheta(xyz, theta);
 
 	for (int i = id; i<JointNum; i++)
 	{
-		//cout << "Pos0:" << endl << Pos0 << endl;
+		cout << "Pos0:" << endl << Pos0 << endl;
 		Pos[i] = Pos0;
 		chain[i].SetPos(Pos0);
 		double length = chain[i].GetLength();
-		VectorXd tmp = VectorXd::Zero(3);
+		VectorXd tmp = VectorXd::Zero(4);
 		tmp(0) = length;
-		tmp(2) = 1;
-		tmp = (*chain[i].GetRot())*tmp;			
-		//cout << "tmp:" << endl << tmp << endl;
+		tmp(3) = 1;
+		MatrixXd X = *chain[i].GetRot();
+		cout << endl << X << endl;
+		cout << endl << tmp<<endl;
+		tmp = X * tmp;
+		cout << "tmp:" << endl << tmp << endl;
 		Pos0 += tmp;
-		Pos0[2] = 1;
+		Pos0[3] = 1;
 	}
 	Pos[JointNum] = Pos0;
 	return 0;
 }
-double JointChain::GetTheta(int i)
+
+double * JointChain::GetTheta(int i)
 {
 	assert(i < this->JointNum);
 	return chain[i].GetTheta();
@@ -67,4 +75,15 @@ VectorXd * JointChain::GetState()
 int JointChain::GetNum()
 {
 	return JointNum;
+}
+double JointChain::GetLength(int id)
+{
+	assert(id < this->JointNum);
+	return this->chain[id].GetLength();
+}
+
+MatrixXd * JointChain::GetRot(int id)
+{
+	assert(id < this->JointNum);
+	return this->chain[id].GetRot();
 }

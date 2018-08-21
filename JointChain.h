@@ -7,10 +7,12 @@ class JointChain {
 	//represent joints' chain.
 public:
 	JointChain(VectorXd Pos0, int Num, double *length);
-	int SetTheta(int id, double theta);
-	double GetTheta(int i);
+	int SetTheta(int id, int xyz, double theta);
+	double * GetTheta(int i);
 	VectorXd * GetState();
+	double GetLength(int id);
 	int GetNum();
+	MatrixXd *GetRot(int id);
 
 private:
 	int JointNum = 0;

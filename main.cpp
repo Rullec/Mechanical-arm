@@ -1,188 +1,256 @@
 // 2018/8/13 11:25 于杭州
-#include <iostream>
 #include <fstream>
-#include <ctime>
-#include <Windows.h>
-#include <GL/glut.h>
+#include "shader.h"
 #include "JointChain.h"
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include "Paint.h"
+//#include <openMesh/Core/IO/MeshIO.hh>
 #define PI 3.1415926535
-
 using namespace std;
-using namespace Eigen;
 
+// Function declare
+// -------------------------------------------------
+GLFWwindow* GL_Init();
+JointChain * JointInit();
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+int processInput(GLFWwindow *window);
+//GLfloat * DrawSphere( double radius);
+double radians(double angle);
 void class_test();
-void PaintCircle(double x, double y, double r);
-void display(void);
-void idle(void);
 
 // Global varibles
-int Num = 7;
-JointChain *J = NULL;
-double *length = NULL;
-int theta = 0;
-int alpha = 0;
-
-void OnTimer(int value)
-{
-	alpha++;
-	alpha = (alpha % 256);
-	glutPostRedisplay();
-	glutTimerFunc(16, OnTimer, 1);
-}
+// --------------------------------------------------
+const int SCR_WIDTH = 800;
+const int SCR_HEIGHT = 600;
+const int JointNum = 7;
+const int SLICE_Z = 20, SLICE_XY = 20;
+float * JointLength = NULL;
+float Yaw = 0;
+float Pitch = 0;
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+float lastX = 400, lastY = 300;
+VectorXd cameraPos = VectorXd::Zero(3);
+VectorXd cameraFront = VectorXd::Zero(3);
+VectorXd cameraUp = VectorXd::Zero(3);
+GLfloat sphere[SLICE_Z * SLICE_XY * 3] = {};
+GLfloat sphereIndices;
 
 int main(int argc, char** argv)
 {
-	
-	srand((unsigned)time(NULL));
-	
-	glutInit(&argc, argv);
-
-	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
-
-	glutInitWindowPosition(100, 100);
-
-	glutInitWindowSize(700, 700);
-
-	glutCreateWindow("第一个OpenGL程序");
-
-	glutDisplayFunc(display);//窗口刷新时才调用的回调函数
-
-	//glutIdleFunc(idle);//系统空闲时调用的回调函数
-	//glutSpecialFunc(); //响应键盘特殊按键
-	//glutKeyboardFunc();//响应键盘普通按键
-	glutTimerFunc(16, OnTimer, 1);
-	glutMainLoop();
-	
 	//class_test();
-	int a;
-	cin >> a;
+
+	// initialize OPENGL
+	GLFWwindow * window = GL_Init();
+	if (!window)
+	{
+		cout << "ERROR:GL_Init failed." << endl;
+	}
+
+	// calculate sphere
+
+
+	// initialize Shader
+	Shader OurShader = Shader("./shader.vs", "./shader.fs");
+
+	// initialize JointChain
+	JointChain *P = JointInit();
+	if (!P)
+	{
+		cout << "ERROR:JointInit Failed!" << endl;
+		return -1;
+	}
+
+	// MainLoop
+	while (!glfwWindowShouldClose(window))
+	{
+		// process input & mouse 
+		processInput(window);
+
+		// clear buffer & depth test
+		glEnable(GL_DEPTH_TEST);
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// render
+		cout << "render." << endl;
+
+		// swap buffer
+		glfwSwapBuffers(window);
+		glfwPollEvents();
+	}
 	return 0;
 }
 
-void display(void)
+GLFWwindow * GL_Init()
 {
-	//重绘回调函数
-	
+	// glfw: initialize and configure
+	// ------------------------------
+	glfwInit();
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	//Initialize
-	int scales = Num;				//scaling 
-	length = new double[Num];		//links length array
-	VectorXd *p = NULL;				//used in paint
-
-	//set initial state of jointchains
-	for (int i = 0; i < Num; i++) length[i] = 1;
-	VectorXd tmp = VectorXd::Zero(3);
-	tmp[2] = 1;
-	if (!J) J = new JointChain(tmp, Num, length);
-
-	//paint links and joints
-	cout << "重绘" << endl;
-	glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glPointSize(5.0f);
-	glLineWidth(3.0f);				//set line width
-	glColor3f(0.0f, 0.2f, 0.0f);	//set line color 
-	glBegin(GL_LINES);
-	
-	//J->SetTheta(0, theta * PI / 180);//change ith link's theta angle
-	J->SetTheta(2, theta * PI / 180);//change ith link's theta angle
-	//J->SetTheta(4, theta * PI / 180);//change ith link's theta angle
-	//J->SetTheta(6, PI - theta * PI / 180);//change ith link's theta angle
-	//J->SetTheta(3, theta * PI / 180);//change ith link's theta angle
-
-
-	theta = theta + 1;
-	for (int i = 0; i < Num; i++)
+	// glfw initialize window
+	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
+	if (window == NULL)
 	{
-		p = J->GetState();
-		cout << "theta[" << i << "]:" << J->GetTheta(i) / PI * 180 << "°C" << endl;
-		cout << "p["<<i<<"]:" << endl << p[i] << endl;
-		
-		//PaintCircle(p[i][0] / scales, p[i][1] / scales, length[i] / scales);
-		glVertex2f(p[i][0] / scales, p[i][1] / scales);
-		glVertex2f(p[i + 1][0] / scales, p[i + 1][1] / scales);
+		std::cout << "Failed to create GLFW window" << std::endl;
+		glfwTerminate();
+		return NULL;
+	}
+	glfwMakeContextCurrent(window);
+	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	// glad: load all OpenGL function pointers
+	// ---------------------------------------
+	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+	{
+		std::cout << "Failed to initialize GLAD" << std::endl;
+		return NULL;
 	}
 
-	glEnd();
-	glutSwapBuffers();
+	return window;
+}
+
+JointChain * JointInit()
+{
+	JointChain * p = NULL;
+	VectorXd InitPos = VectorXd::Zero(4);
+
+	// initialize JointLength
+	JointLength = new float[JointNum];
+	for (int i = 0; i < JointNum; i++) JointLength[i] = 1;
+
+	// create new jointchain
+	InitPos[3] = 1;
+	p = new JointChain(InitPos, JointNum, (double *)JointLength);
+
+	return p;
+}
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+{
+	// make sure the viewport matches the new window dimensions; note that width and 
+	// height will be significantly larger than specified on retina displays.
+	glViewport(0, 0, width, height);
+}
+
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{//鼠标回调函数
+ // 计算当前位置和现在位置的差，改变两个角度，然后计算方向向量。
+	float xoffset = xpos - lastX;
+	float yoffset = lastY - ypos;//y坐标从底到顶依次增大。
+	lastX = xpos;
+	lastY = ypos;
+	float sensitivity = 0.05f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+
+	Yaw += xoffset;
+	Pitch += yoffset;
+	Pitch = Pitch > 89.0f ? 89.0f : Pitch;
+	Pitch = Pitch < -89.0f ? -89.0f : Pitch;
+
+	// calculate front
 	/*
-	for (int i = 0; i < Num; i++)
-	{
-		int times = rand() % (180 - 0);
-		J->SetTheta(i, times * PI / 180);//change ith link's theta angle
-		p = J->GetState();
-		cout << "theta[" << i << "]:" << J.GetTheta(i) / PI * 180 << "°C" << endl;
-
-		//PaintCircle(p[i][0] / scales, p[i][1] / scales, length[i] / scales);
-		glVertex2f(p[i][0] / scales, p[i][1] / scales);
-		glVertex2f(p[i + 1][0] / scales, p[i + 1][1] / scales);
-	}
+	VectorXd front = VectorXd(0, 0, 0);
+	front.x = cos(radians(Yaw))*cos(radians(Pitch));
+	front.y = sin(radians(Pitch));
+	front.z = sin(radians(Yaw))*cos(radians(Pitch));
+	cameraFront = front;
 	*/
-	return;
+}
+
+int processInput(GLFWwindow *window)
+{
+	float cameraSpeed = deltaTime * 2.5f; // adjust accordingly
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+	{
+		glfwSetWindowShouldClose(window, true);
+		return 0;
+	}
+	if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)	return GLFW_KEY_UP;
+	if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)	return GLFW_KEY_DOWN;
+	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)	return GLFW_KEY_RIGHT;
+	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)	return GLFW_KEY_LEFT;
+
+	return 0;
+}
+
+double radians(double angle)
+{
+	return angle / 180 * PI;
 }
 
 /*
-void idle(void){
-	//空闲回调函数
-	theta++;
-	if (theta >= 360) theta = 0;
-	
-	//Initialize
-	int scales = Num;				//scaling 
-	length = new double[Num];		//links length array
-	VectorXd *p = NULL;				//used in paint
+GLfloat * DrawSphere(double radius)
+{
+float step_z = PI / SLICE_Z;
+float step_xy = 2 * PI / SLICE_XY;
 
-	//set initial state of jointchains
-	for (int i = 0; i < Num; i++) length[i] = 1;
-	VectorXd tmp = VectorXd::Zero(3);
-	tmp[2] = 1;
-	if(!J) J = new JointChain(tmp, Num, length);
+for (int i = 0; i < SLICE_Z; i++)
+{
+for (int j = 0; j < SLICE_XY; j++)
+{
+GLfloat thetaZ = PI / 2 - step_z * i;
+GLfloat thetaxy = j * step_xy;
 
-	//paint links and joints
-	cout << "重绘" << endl;
-	glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glPointSize(5.0f);
-	glLineWidth(3.0f);				//set line width
-	glColor3f(0.0f, 0.2f, 0.0f);	//set line color 
-	glBegin(GL_LINES);
+sphere[i*j + 0] = cos(thetaZ) * cos(thetaxy) * radius;
+sphere[i*j + 1] = cos(thetaZ) * sin(thetaxy) * radius;
+sphere[i*j + 2] = sin(thetaZ) * radius;
+}
+}
+for (int i = 0; i < SLICE_Z - 1; i++)
+{
+for (int j = 0; j < SLICE_XY; j++)
+{
+sphereIndices[i*j + 0] = i * j + 0;
+sphereIndices[i*j + 1] = i * j + 1;
+sphereIndices[i*j + 2] = (i + 1) * j + 0;
+sphereIndices[i*j + 3] = (i + 1) * j + 1;
 
 
-	glEnd();
-	glFlush();
-	return;
+}
+}
 }
 */
-
-void PaintCircle(double x, double y, double r)
-{
-	//paint circle
-	int n = 10;
-	glBegin(GL_POLYGON);
-	for (int i = 0; i<n; i++)
-	{
-		glVertex2f(x + r * cos(2 * PI*i / n), y + r * sin(2 * PI*i / n));
-	}
-	glEnd();
-}
-
 void class_test()
 {
-	cout << "AJoint class test begin...";
+	cout << "AJoint class test begin..." << endl;
 	// uniy test Ajoint class
 	AJoint *p;
 	p = new AJoint();
 	cout << "length:" << p->GetLength() << endl;
-	cout << "position:" << *(p->GetPos()) << endl;
-	cout << "rot matrix:" << *(p->GetRot()) << endl;
-	cout << "theta angle:" << p->GetTheta() << endl;
-
+	cout << "position:" << endl << *(p->GetPos()) << endl;
+	cout << "rot matrix:" << endl << *(p->GetRot()) << endl;
+	cout << "rotx matrix:" << endl << *(p->GetRot(0)) << endl;
+	cout << "roty matrix:" << endl << *(p->GetRot(1)) << endl;
+	cout << "rotz matrix:" << endl << *(p->GetRot(2)) << endl;
+	cout << "x axis theta:" << p->GetTheta()[0] * 180 << endl;
+	cout << "y axis theta:" << p->GetTheta()[1] * 180 << endl;
+	cout << "z axis theta:" << p->GetTheta()[2] * 180 << endl;
+	cout << "********************************" << endl;
+	p->SetTheta(0, PI / 6);
+	p->SetTheta(1, PI / 3);
+	p->SetTheta(2, PI / 2);
+	cout << "rot matrix:" << endl << *(p->GetRot()) << endl;
+	cout << "rotx matrix:" << endl << *(p->GetRot(0)) << endl;
+	cout << "roty matrix:" << endl << *(p->GetRot(1)) << endl;
+	cout << "rotz matrix:" << endl << *(p->GetRot(2)) << endl;
+	cout << "x axis theta:" << p->GetTheta()[0] * 180 / PI << endl;
+	cout << "y axis theta:" << p->GetTheta()[1] * 180 / PI << endl;
+	cout << "z axis theta:" << p->GetTheta()[2] * 180 / PI << endl;
 
 	cout << "JointChain class test begin...";
 	// unit test JointChain class
 	double Len[4] = { 1, 1, 1, 1 };
-	VectorXd InitPos(3);
-	InitPos << 1, 2, 1;
+	VectorXd InitPos(4);
+	InitPos << 0, 0, 0, 1;
 	JointChain J(InitPos, 4, Len);
 
 	int num = J.GetNum();
@@ -191,9 +259,11 @@ void class_test()
 	{
 		cout << "J[" << i << "] state:" << endl << pos[i] << endl;
 	}
-	cout << "*******" << endl;
-	J.SetTheta(1, PI / 2);
-	J.SetTheta(2, PI / 6);
+	cout << "******************************************************" << endl;
+	//J.SetTheta(1, 0, PI / 2); 不要把一个和x轴重合的向量绕x轴是旋转
+	J.SetTheta(2, 1, PI / 6);
+	double *q = J.GetTheta(1);
+	for (int i = 0; i < 3; i++) cout << "link " << 1 << "'s theta[" << i << "]:" << q[i] << endl;
 	for (int i = 0; i < num; i++)
 	{
 		cout << "J[" << i << "] state:" << endl << pos[i] << endl;
