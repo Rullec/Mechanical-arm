@@ -9,7 +9,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#define PI 3.1415926535
 using namespace std;
 typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
 
@@ -43,7 +42,14 @@ vec3 cameraUp = vec3(0.0f, 1.0f, 0.0f);//上轴
 
 GLfloat sphere[72000];
 GLfloat cylinder[100000];
-
+GLfloat axises[18] = {
+0.0f, 0.0f, 0.0f,
+3.0f, 0.0f, 0.0f,
+0.0f, 0.0f, 0.0f,
+0.0f, 3.0f, 0.0f,
+0.0f, 0.0f, 0.0f,
+0.0f, 0.0f, 3.0f
+};
 int main(int argc, char** argv)
 {
 	//class_test();
@@ -80,8 +86,10 @@ int main(int argc, char** argv)
 	DrawLinks();
 
 	// initialize Shader
-	Shader OurShader1 = Shader("./shader.vs", "./shader.fs"), OurShader2 = Shader("./shader1.vs", "./shader.fs");
-	OurShader1.use();
+	Shader OurShader1 = Shader("./shader_ball.vs", "./shader_ball.fs"),\
+		OurShader2 = Shader("./shader_cylinder.vs", "./shader_cylinder.fs"),\
+		OurShader3 = Shader("./shader_axis.vs", "./shader_axis.fs");
+
 
 
 	// initialize JointChain
@@ -97,41 +105,50 @@ int main(int argc, char** argv)
 	}
 
 	// initilize VAO & VBO
-	unsigned int VBO[2], VAO[2];//0-joints 1-links
-	glGenVertexArrays(2, VAO);
-	glGenBuffers(2, VBO);
-	glBindVertexArray(VAO[0]);// bind joints
+	unsigned int VBO[3], VAO[3];//0-joints 1-links
+	glGenVertexArrays(3, VAO);
+	glGenBuffers(3, VBO);
 
+	glBindVertexArray(VAO[0]);// bind joints
 	glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(sphere), sphere, GL_DYNAMIC_DRAW);
-
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);
 	
 	glBindVertexArray(VAO[1]); // bind links
-
 	glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cylinder), cylinder, GL_DYNAMIC_DRAW);
-
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(1);
-	
+
+	glBindVertexArray(VAO[2]); // bind axises
+	glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(axises), axises, GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+	glEnableVertexAttribArray(2);
+
 	// set view
 	float screenWidth = 800, screenHeight = 600;
 	mat4 model, view, projection;
+
 	model = rotate(model, radian_news(0.0f), vec3(0.0f, 0.0f, 1.0f));// model matrix
 	view = translate(view, vec3(0.0f, 0.0f, -1.0f));//观察矩阵
 	projection = perspective(radian_news(45.0f), screenWidth / screenHeight, 0.1f, 100.0f);//投影矩阵
+
+	OurShader1.use();
 	OurShader1.setMat4("view", view);
 	OurShader1.setMat4("projection", projection);
 	OurShader1.setMat4("model", model);
 
-	
 	OurShader2.use();
 	OurShader2.setMat4("view", view);
 	OurShader2.setMat4("projection", projection);
 	OurShader2.setMat4("model", model);
 	
+	OurShader3.use();
+	OurShader3.setMat4("view", view);
+	OurShader3.setMat4("projection", projection);
+	OurShader3.setMat4("model", model);
 
 	// MainLoop
 	while (!glfwWindowShouldClose(window))
@@ -144,6 +161,8 @@ int main(int argc, char** argv)
 		OurShader1.setMat4("view", view);
 		OurShader2.use();
 		OurShader2.setMat4("view", view);
+		OurShader3.use();
+		OurShader3.setMat4("view", view);
 
 		// clear buffer & depth test
 		glEnable(GL_DEPTH_TEST);
@@ -155,21 +174,21 @@ int main(int argc, char** argv)
 		OurShader1.use();
 
 		// Draw joints
-		J->SetTheta(1, 2, (float)glfwGetTime());
-		J->SetTheta(1, 1, (float)glfwGetTime()/2);
-
-		J->SetTheta(4, 2, (float)glfwGetTime());
-		J->SetTheta(4, 1, (float)glfwGetTime() / 2);
+		float theta = glfwGetTime();
+		J->SetTheta(1, 1, theta);
+		J->SetTheta(0, 1, theta);
+		J->SetTheta(2, 2, theta/2);
+		J->SetTheta(3, 1, theta/2);
 
 		glBindVertexArray(VAO[0]);
-		VectorXd * pos = J->GetState();
+		VectorXd * pos = J->GetState();//opengl局部坐标系是右手系/若绕Y轴正传，当角度增大的时候，Z坐标会变负。我的Joint类是按照左手系写的…出错了。
 		for (int i = 0; i < JointNum; i++)
 		{
 			vec3 tmp;
 			tmp.x = pos[i][0];
 			tmp.y = pos[i][1];
 			tmp.z = pos[i][2];
-			cout << pos[i] << endl;
+			//cout << pos[i] << endl;
 			mat4 model;
 			model = translate(model, tmp);
 			
@@ -178,7 +197,6 @@ int main(int argc, char** argv)
 		}
 
 		// Draw links
-		
 		OurShader2.use();
 		glBindVertexArray(VAO[1]);
 		for (int i = 0; i < JointNum; i++)
@@ -191,18 +209,26 @@ int main(int argc, char** argv)
 			mat4 model;
 			model = translate(model, tmp);
 			
-			double * theta = J->GetTheta(i);//弧度制
+			double * theta = J->GetTheta(i);//取到的是弧度制
 			model = rotate(model, float(theta[0]), vec3(1.0, 0.0, 0.0));// A
-			model = rotate(model,  float(theta[1]), vec3(0.0, 1.0, 0.0));// B
+			model = rotate(model, float(theta[1]), vec3(0.0, 1.0, 0.0));// B
 			model = rotate(model, float(theta[2]), vec3(0.0, 0.0, 1.0)); //C
 
-			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D
+			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D 转正90度，没错
 			OurShader2.setMat4("model", model);
 
 			glDrawArrays(GL_TRIANGLES, 0, 99998);
 		}
 		
-		
+		// Draw axises
+		OurShader3.use();
+		glBindVertexArray(VAO[2]);
+
+		for (int i = 0; i < JointNum; i++)
+		{
+			OurShader3.setInt("axis", i);
+			glDrawArrays(GL_LINES, 2*i, 2);
+		}
 
 		// swap buffer
 		glfwSwapBuffers(window);

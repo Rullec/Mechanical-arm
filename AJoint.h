@@ -1,11 +1,12 @@
 #pragma once
 #include <iostream>
 #include <Eigen/Dense>
+#define PI 3.14159265359
 using namespace Eigen;
 // 2018/8/16 15:00 from 2d to 3d
 
 class AJoint {
-	// represent a joint
+	// represent a joint ×óÊÖÏµ
 public:
 	AJoint();
 	int SetTheta(int xyz, double theta);	// set x/y/z axis 's rotation theta [0,2*Pi]

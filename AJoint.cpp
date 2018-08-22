@@ -36,11 +36,17 @@ int AJoint::SetTheta(int id, double theta)// set rotation theta [0,2*Pi]
 	MatrixXd tmp = MatrixXd::Identity(4, 4);
 	
 	//cout << endl << Rot << endl;
-	tmp(first, first) = cos(theta);
 	tmp(first, second) = -1 * sin(theta);
 	tmp(second, first) = sin(theta);
+	tmp(first, first) = cos(theta);
 	tmp(second, second) = cos(theta);
 
+	// 左手系特例：绕Y轴旋转矩阵取反
+	if (1 == id)
+	{
+		tmp(first, second) =  sin(theta);
+		tmp(second, first) = -1 * sin(theta);
+	}
 	switch (id) {
 	case 0:Rotx = tmp; break;
 	case 1:Roty = tmp; break;

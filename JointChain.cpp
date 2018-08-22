@@ -38,7 +38,9 @@ JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 }
 
 int JointChain::SetTheta(int id, int xyz, double theta)
-{
+{//这些theta角都是弧度制的，求cos也都是弧度制的球法
+	while (theta < 0) theta += 2*PI;
+	while (theta > 2*PI) theta -= 2*PI;
 	VectorXd Pos0 = Pos[id];
  	chain[id].SetTheta(xyz, theta);
 
