@@ -21,5 +21,5 @@ private:
 	MatrixXd Rot, Rotx, Roty, Rotz; // rotation matrix 4*4
 	VectorXd Pos; // joint position 4*1
 	double Length;
-	double *Theta;
+	double *Theta; // manipulate rads between 0 - 2*PI
 };

@@ -17,12 +17,13 @@ typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
 // -------------------------------------------------
 GLFWwindow* GL_Init();
 JointChain * JointInit();
+//GLfloat * DrawSphere( double radius);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 int processInput(GLFWwindow *window);
-//GLfloat * DrawSphere( double radius);
-double radians(double angle);
+float radian_news(float angle);
 void class_test();
+void DrawLinks();
 
 // Global varibles
 // --------------------------------------------------
@@ -41,6 +42,7 @@ vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);	//摄像机面向
 vec3 cameraUp = vec3(0.0f, 1.0f, 0.0f);//上轴
 
 GLfloat sphere[72000];
+GLfloat cylinder[100000];
 
 int main(int argc, char** argv)
 {
@@ -53,7 +55,7 @@ int main(int argc, char** argv)
 		cout << "ERROR:GL_Init failed." << endl;
 	}
 
-	// read model mesh 
+	// read ball mesh 
 	MyMesh mesh;
 	int i = 0, j = 0;
 	if (!OpenMesh::IO::read_mesh(mesh, "ball.obj"))
@@ -61,7 +63,7 @@ int main(int argc, char** argv)
 		std::cerr << "read error\n";
 		exit(1);
 	}
-	
+
 	memset(sphere, 0, sizeof(GLfloat) * 72000);
 	for (MyMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it, ++j) {
 		i = 0;
@@ -72,13 +74,15 @@ int main(int argc, char** argv)
 			sphere[3 * (j * 3 + i) + 1] = tmp[1] / 50 - 0.2;
 			sphere[3 * (j * 3 + i) + 2] = tmp[2] / 50 - 0.2;
 		}
-		if( j == mesh.n_faces()) 
-			cout << j << endl;
 	}
 
+	// calculate links vertex
+	DrawLinks();
+
 	// initialize Shader
-	Shader OurShader = Shader("./shader.vs", "./shader.fs");
-	OurShader.use();
+	Shader OurShader1 = Shader("./shader.vs", "./shader.fs"), OurShader2 = Shader("./shader1.vs", "./shader.fs");
+	OurShader1.use();
+
 
 	// initialize JointChain
 	VectorXd initPos = VectorXd::Zero(4);
@@ -93,26 +97,41 @@ int main(int argc, char** argv)
 	}
 
 	// initilize VAO & VBO
-	unsigned int VBO, VAO;
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glBindVertexArray(VAO);
+	unsigned int VBO[2], VAO[2];//0-joints 1-links
+	glGenVertexArrays(2, VAO);
+	glGenBuffers(2, VBO);
+	glBindVertexArray(VAO[0]);// bind joints
 
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(sphere), sphere, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(sphere), sphere, GL_DYNAMIC_DRAW);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);
+	
+	glBindVertexArray(VAO[1]); // bind links
 
+	glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cylinder), cylinder, GL_DYNAMIC_DRAW);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+	glEnableVertexAttribArray(1);
+	
 	// set view
 	float screenWidth = 800, screenHeight = 600;
 	mat4 model, view, projection;
-	model = rotate(model, radians(0.0f), vec3(0.0f, 0.0f, 1.0f));// model matrix
+	model = rotate(model, radian_news(0.0f), vec3(0.0f, 0.0f, 1.0f));// model matrix
 	view = translate(view, vec3(0.0f, 0.0f, -1.0f));//观察矩阵
-	projection = perspective(radians(45.0f), screenWidth / screenHeight, 0.1f, 100.0f);//投影矩阵
-	OurShader.setMat4("view", view);
-	OurShader.setMat4("projection", projection);
-	OurShader.setMat4("model", model);
+	projection = perspective(radian_news(45.0f), screenWidth / screenHeight, 0.1f, 100.0f);//投影矩阵
+	OurShader1.setMat4("view", view);
+	OurShader1.setMat4("projection", projection);
+	OurShader1.setMat4("model", model);
+
+	
+	OurShader2.use();
+	OurShader2.setMat4("view", view);
+	OurShader2.setMat4("projection", projection);
+	OurShader2.setMat4("model", model);
+	
 
 	// MainLoop
 	while (!glfwWindowShouldClose(window))
@@ -121,7 +140,10 @@ int main(int argc, char** argv)
 		processInput(window);
 
 		view = lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-		OurShader.setMat4("view", view);
+		OurShader1.use();
+		OurShader1.setMat4("view", view);
+		OurShader2.use();
+		OurShader2.setMat4("view", view);
 
 		// clear buffer & depth test
 		glEnable(GL_DEPTH_TEST);
@@ -130,13 +152,17 @@ int main(int argc, char** argv)
 
 		// render
 		//cout << "render." << endl;
-		OurShader.use();
-		glBindVertexArray(VAO);
-		VectorXd * pos = J->GetState();
-		J->SetTheta(1, 2, (float)glfwGetTime());
-		//J->SetTheta(1, 1, (float)glfwGetTime());
-		//J->SetTheta(3, 2, (float)glfwGetTime());
+		OurShader1.use();
 
+		// Draw joints
+		J->SetTheta(1, 2, (float)glfwGetTime());
+		J->SetTheta(1, 1, (float)glfwGetTime()/2);
+
+		J->SetTheta(4, 2, (float)glfwGetTime());
+		J->SetTheta(4, 1, (float)glfwGetTime() / 2);
+
+		glBindVertexArray(VAO[0]);
+		VectorXd * pos = J->GetState();
 		for (int i = 0; i < JointNum; i++)
 		{
 			vec3 tmp;
@@ -146,11 +172,38 @@ int main(int argc, char** argv)
 			cout << pos[i] << endl;
 			mat4 model;
 			model = translate(model, tmp);
-			OurShader.setMat4("model", model);
+			
+			OurShader1.setMat4("model", model);
 			glDrawArrays(GL_TRIANGLES, 0, 72000);
+		}
+
+		// Draw links
+		
+		OurShader2.use();
+		glBindVertexArray(VAO[1]);
+		for (int i = 0; i < JointNum; i++)
+		{
+			vec3 tmp;
+			tmp.x = pos[i][0];
+			tmp.y = pos[i][1];
+			tmp.z = pos[i][2];
+			cout << pos[i] << endl;
+			mat4 model;
+			model = translate(model, tmp);
+			
+			double * theta = J->GetTheta(i);//弧度制
+			model = rotate(model, float(theta[0]), vec3(1.0, 0.0, 0.0));// A
+			model = rotate(model,  float(theta[1]), vec3(0.0, 1.0, 0.0));// B
+			model = rotate(model, float(theta[2]), vec3(0.0, 0.0, 1.0)); //C
+
+			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D
+			OurShader2.setMat4("model", model);
+
+			glDrawArrays(GL_TRIANGLES, 0, 99998);
 		}
 		
 		
+
 		// swap buffer
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -242,9 +295,9 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 
 	// calculate front
 	vec3 front;
-	front.x = cos(radians(Yaw))*cos(radians(Pitch));
-	front.y = sin(radians(Pitch));
-	front.z = sin(radians(Yaw))*cos(radians(Pitch));
+	front.x = cos(radian_news(Yaw))*cos(radian_news(Pitch));
+	front.y = sin(radian_news(Pitch));
+	front.z = sin(radian_news(Yaw))*cos(radian_news(Pitch));
 	cameraFront = front;
 	
 }
@@ -272,43 +325,56 @@ int processInput(GLFWwindow *window)
 	return 0;
 }
 
-double radians(double angle)
+float radian_news(float angle)
 {
 	return angle / 180 * PI;
 }
 
-/*
-GLfloat * DrawSphere(double radius)
+void DrawLinks()
 {
-float step_z = PI / SLICE_Z;
-float step_xy = 2 * PI / SLICE_XY;
+	double * circle = NULL;
+	double radius = 0.1;
+	double length = 1;
+	int circle_slice = 50, z_slice = 100;
 
-for (int i = 0; i < SLICE_Z; i++)
-{
-for (int j = 0; j < SLICE_XY; j++)
-{
-GLfloat thetaZ = PI / 2 - step_z * i;
-GLfloat thetaxy = j * step_xy;
+	circle = new double[circle_slice * 2];
+	for (int i = 0; i < circle_slice; i++)
+	{
+		circle[2 * i + 0] = cos(1.0 * i / circle_slice * 2 * PI) * radius;
+		circle[2 * i + 1] = sin(1.0 * i / circle_slice * 2 * PI) * radius;
+		//cout << circle[2 * i] << " " << circle[2 * i + 1] << endl;
+	}
+	for (int z = 0; z < z_slice; z++)
+	{
+		for (int i = 0; i < circle_slice; i++)
+		{
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 0] = circle[2 * i + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 1] = circle[2 * i + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 2] = z / z_slice * length;
+				
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 0] = circle[2 * i + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 1] = circle[2 * i + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 2] = (z+1) / z_slice * length;
 
-sphere[i*j + 0] = cos(thetaZ) * cos(thetaxy) * radius;
-sphere[i*j + 1] = cos(thetaZ) * sin(thetaxy) * radius;
-sphere[i*j + 2] = sin(thetaZ) * radius;
-}
-}
-for (int i = 0; i < SLICE_Z - 1; i++)
-{
-for (int j = 0; j < SLICE_XY; j++)
-{
-sphereIndices[i*j + 0] = i * j + 0;
-sphereIndices[i*j + 1] = i * j + 1;
-sphereIndices[i*j + 2] = (i + 1) * j + 0;
-sphereIndices[i*j + 3] = (i + 1) * j + 1;
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 2 * 3 + 0] = circle[2 * (1 + i) + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 2 * 3 + 1] = circle[2 * (1 + i) + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 2 * 3 + 2] = z / z_slice * length;
 
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 3 * 3 + 0] = circle[2 * i + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 3 * 3 + 1] = circle[2 * i + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 3 * 3 + 2] = (z + 1) / z_slice * length;
 
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 4 * 3 + 0] = circle[2 * (1 + i) + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 4 * 3 + 1] = circle[2 * (1 + i) + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 4 * 3 + 2] = (z + 1) / z_slice * length;
+
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 5 * 3 + 0] = circle[2 * (1 + i) + 0];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 5 * 3 + 1] = circle[2 * (1 + i) + 1];
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 5 * 3 + 2] = z / z_slice * length;
+
+		}
+	}
 }
-}
-}
-*/
 void class_test()
 {
 	cout << "AJoint class test begin..." << endl;

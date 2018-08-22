@@ -7,7 +7,7 @@ class JointChain {
 	//represent joints' chain.
 public:
 	JointChain(VectorXd Pos0, int Num, double *length);
-	int SetTheta(int id, int xyz, double theta);
+	int SetTheta(int id, int xyz, double theta);// manipulate theta between 0 - 2 * PI
 	double * GetTheta(int i);
 	VectorXd * GetState();
 	double GetLength(int id);
