@@ -26,7 +26,7 @@ void DrawLinks();
 // --------------------------------------------------
 const float SCR_WIDTH = 800;
 const float SCR_HEIGHT = 600;
-const int JointNum = 7;
+const int JointNum = 3;
 const int SLICE_Z = 20, SLICE_XY = 20;
 float * JointLength = NULL;
 float Yaw = 0;
@@ -34,10 +34,19 @@ float Pitch = 0;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 float lastX = 400, lastY = 300;
+float shininess;
+
 vec3 cameraPos = vec3(0.0, 0.0, 0.0); // 位置
 vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);	//摄像机面向
 vec3 cameraUp = vec3(0.0f, 1.0f, 0.0f);//上轴
 vec3 lightPos = vec3(1);
+vec3 lightColor = vec3(1);
+vec3 JointColor = vec3(0.7f, 0.5f, 0.5f);
+vec3 LinkColor = vec3(0.2f, 0.5f, 0.5f);
+vec3 ambient = vec3(0.2);
+vec3 diffuse = vec3(0.5);
+vec3 specular = vec3(1);
+
 GLfloat sphere[72000];
 GLfloat cylinder[100000];
 GLfloat axises[18] = {
@@ -214,6 +223,7 @@ int main(int argc, char** argv)
 	OurShader4.setMat4("model", model);
 
 	// MainLoop
+	double timea = 0, timeb = 0, timec = 0;
 	while (!glfwWindowShouldClose(window))
 	{
 		// process input & mouse 
@@ -235,15 +245,28 @@ int main(int argc, char** argv)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// render
-		//cout << "render." << endl;
-		OurShader1.use();
 
 		// Draw joints
-		float theta = glfwGetTime();
-		J->SetTheta(1, 1, theta);
-		J->SetTheta(0, 1, theta/2);
-		J->SetTheta(3, 2, theta/3);
-
+		//float theta = glfwGetTime();
+		//J->SetTheta(0, 2, theta / 2);
+		timea += 0.01;
+		J->SetTheta(0, 1, timea);
+		if (timea > PI / 2)
+		{
+			timea = PI / 2;
+			J->SetTheta(0, 0, -1 * timeb);
+			J->SetTheta(1, 2, timeb);
+			timeb += 0.01;
+			if (timeb > PI / 2)
+			{
+				timea = 0;
+				timeb = 0;
+				J->SetTheta(0, 1, timea);
+				J->SetTheta(0, 0, -1 * timeb);
+				J->SetTheta(1, 2, timeb);
+			}
+		}
+		OurShader1.use();
 		glBindVertexArray(VAO[0]);
 		VectorXd * pos = J->GetState();//opengl局部坐标系是右手系/若绕Y轴正传，当角度增大的时候，Z坐标会变负。我的Joint类是按照左手系写的…出错了。
 		for (int i = 0; i < JointNum; i++)
@@ -257,9 +280,15 @@ int main(int argc, char** argv)
 			model = translate(model, tmp);
 			
 			OurShader1.setMat4("model", model);
-			OurShader1.setVec3("objectColor", vec3(1.0f, 0.5f, 0.31f));
-			OurShader1.setVec3("lightColor", vec3(1.0f, 1.0f, 1.0f));
+			OurShader1.setVec3("objectColor", JointColor);
+			OurShader1.setVec3("lightColor", lightColor);
 			OurShader1.setVec3("lightPos", lightPos);
+			OurShader1.setVec3("cameraPos", camera.GetPos());
+			OurShader1.setVec3("material.ambient", vec3(1.0f, 0.5f, 0.31f));
+			OurShader1.setVec3("material.diffuse", vec3(1.0f, 0.5f, 0.31f));
+			OurShader1.setVec3("material.specular", vec3(0.5f, 0.5f, 0.5f));
+			OurShader1.setFloat("material.shininess", 32.0f);
+
 			glDrawArrays(GL_TRIANGLES, 0, 72000);
 		}
 
@@ -283,7 +312,14 @@ int main(int argc, char** argv)
 
 			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D 转正90度，没错
 			OurShader2.setMat4("model", model);
-
+			OurShader2.setVec3("objectColor", LinkColor);
+			OurShader2.setVec3("lightColor", lightColor);
+			OurShader2.setVec3("lightPos", lightPos);
+			OurShader2.setVec3("cameraPos", camera.GetPos());
+			OurShader2.setVec3("material.ambient", vec3(1.0f, 0.5f, 0.31f));
+			OurShader2.setVec3("material.diffuse", vec3(1.0f, 0.5f, 0.31f));
+			OurShader2.setVec3("material.specular", vec3(0.5f, 0.5f, 0.5f));
+			OurShader2.setFloat("material.shininess", 32.0f);
 			glDrawArrays(GL_TRIANGLES, 0, 99998);
 		}
 		
