@@ -6,9 +6,7 @@
 #include <GLFW/glfw3.h>
 #include "shader.h"
 #include "JointChain.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "camera.h"
 using namespace std;
 typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
 
@@ -39,7 +37,7 @@ float lastX = 400, lastY = 300;
 vec3 cameraPos = vec3(0.0, 0.0, 0.0); // 位置
 vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);	//摄像机面向
 vec3 cameraUp = vec3(0.0f, 1.0f, 0.0f);//上轴
-
+vec3 lightPos = vec3(1);
 GLfloat sphere[72000];
 GLfloat cylinder[100000];
 GLfloat axises[18] = {
@@ -50,6 +48,51 @@ GLfloat axises[18] = {
 0.0f, 0.0f, 0.0f,
 0.0f, 0.0f, 3.0f
 };
+GLfloat cubes[] = {
+	-0.5f, -0.5f, -0.5f,
+	0.5f, -0.5f, -0.5f,
+	0.5f,  0.5f, -0.5f,
+	0.5f,  0.5f, -0.5f,
+	-0.5f,  0.5f, -0.5f,
+	-0.5f, -0.5f, -0.5f,
+
+	-0.5f, -0.5f,  0.5f,
+	0.5f, -0.5f,  0.5f,
+	0.5f,  0.5f,  0.5f,
+	0.5f,  0.5f,  0.5f,
+	-0.5f,  0.5f,  0.5f,
+	-0.5f, -0.5f,  0.5f,
+
+	-0.5f,  0.5f,  0.5f,
+	-0.5f,  0.5f, -0.5f,
+	-0.5f, -0.5f, -0.5f,
+	-0.5f, -0.5f, -0.5f,
+	-0.5f, -0.5f,  0.5f,
+	-0.5f,  0.5f,  0.5f,
+
+	0.5f,  0.5f,  0.5f,
+	0.5f,  0.5f, -0.5f,
+	0.5f, -0.5f, -0.5f,
+	0.5f, -0.5f, -0.5f,
+	0.5f, -0.5f,  0.5f,
+	0.5f,  0.5f,  0.5f,
+
+	-0.5f, -0.5f, -0.5f,
+	0.5f, -0.5f, -0.5f,
+	0.5f, -0.5f,  0.5f,
+	0.5f, -0.5f,  0.5f,
+	-0.5f, -0.5f,  0.5f,
+	-0.5f, -0.5f, -0.5f,
+
+	-0.5f,  0.5f, -0.5f,
+	0.5f,  0.5f, -0.5f,
+	0.5f,  0.5f,  0.5f,
+	0.5f,  0.5f,  0.5f,
+	-0.5f,  0.5f,  0.5f,
+	-0.5f,  0.5f, -0.5f,
+};
+Camera camera;
+
 int main(int argc, char** argv)
 {
 	//class_test();
@@ -88,9 +131,8 @@ int main(int argc, char** argv)
 	// initialize Shader
 	Shader OurShader1 = Shader("./shader_ball.vs", "./shader_ball.fs"),\
 		OurShader2 = Shader("./shader_cylinder.vs", "./shader_cylinder.fs"),\
-		OurShader3 = Shader("./shader_axis.vs", "./shader_axis.fs");
-
-
+		OurShader3 = Shader("./shader_axis.vs", "./shader_axis.fs"),\
+		OurShader4 = Shader("./shader_lamp.vs", "./shader_lamp.fs");
 
 	// initialize JointChain
 	VectorXd initPos = VectorXd::Zero(4);
@@ -127,6 +169,22 @@ int main(int argc, char** argv)
 	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(2);
 
+	unsigned int lampVBO, lampVAO;
+	glGenVertexArrays(1, &lampVAO);
+	glGenBuffers(1, &lampVBO);
+	glBindVertexArray(lampVAO); // bind axises
+	glBindBuffer(GL_ARRAY_BUFFER, lampVBO); // bind lamp
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cubes), cubes, GL_STATIC_DRAW);
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void *)0);
+	glEnableVertexAttribArray(3);
+	/*
+	glBindVertexArray(VAO[3]); // bind axises
+	glBindBuffer(GL_ARRAY_BUFFER, VBO[3]); // bind lamp
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cubes), cubes, GL_STATIC_DRAW);
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void *)0);
+	glEnableVertexAttribArray(3);
+	*/
+
 	// set view
 	float screenWidth = 800, screenHeight = 600;
 	mat4 model, view, projection;
@@ -150,19 +208,26 @@ int main(int argc, char** argv)
 	OurShader3.setMat4("projection", projection);
 	OurShader3.setMat4("model", model);
 
+	OurShader4.use();
+	OurShader4.setMat4("view", view);
+	OurShader4.setMat4("projection", projection);
+	OurShader4.setMat4("model", model);
+
 	// MainLoop
 	while (!glfwWindowShouldClose(window))
 	{
 		// process input & mouse 
 		processInput(window);
 
-		view = lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+		view = lookAt(camera.GetPos(), camera.GetPos() + camera.GetFront(), camera.GetUp());
 		OurShader1.use();
 		OurShader1.setMat4("view", view);
 		OurShader2.use();
 		OurShader2.setMat4("view", view);
 		OurShader3.use();
 		OurShader3.setMat4("view", view);
+		OurShader4.use();
+		OurShader4.setMat4("view", view);
 
 		// clear buffer & depth test
 		glEnable(GL_DEPTH_TEST);
@@ -176,9 +241,8 @@ int main(int argc, char** argv)
 		// Draw joints
 		float theta = glfwGetTime();
 		J->SetTheta(1, 1, theta);
-		J->SetTheta(0, 1, theta);
-		J->SetTheta(2, 2, theta/2);
-		J->SetTheta(3, 1, theta/2);
+		J->SetTheta(0, 1, theta/2);
+		J->SetTheta(3, 2, theta/3);
 
 		glBindVertexArray(VAO[0]);
 		VectorXd * pos = J->GetState();//opengl局部坐标系是右手系/若绕Y轴正传，当角度增大的时候，Z坐标会变负。我的Joint类是按照左手系写的…出错了。
@@ -193,6 +257,9 @@ int main(int argc, char** argv)
 			model = translate(model, tmp);
 			
 			OurShader1.setMat4("model", model);
+			OurShader1.setVec3("objectColor", vec3(1.0f, 0.5f, 0.31f));
+			OurShader1.setVec3("lightColor", vec3(1.0f, 1.0f, 1.0f));
+			OurShader1.setVec3("lightPos", lightPos);
 			glDrawArrays(GL_TRIANGLES, 0, 72000);
 		}
 
@@ -229,6 +296,16 @@ int main(int argc, char** argv)
 			OurShader3.setInt("axis", i);
 			glDrawArrays(GL_LINES, 2*i, 2);
 		}
+
+		// Draw lamp
+		OurShader4.use();
+		mat4 model;
+		model = translate(model, lightPos);
+		model = scale(model, vec3(0.2));
+		OurShader4.setMat4("model", model);
+		glBindVertexArray(lampVAO);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		
 
 		// swap buffer
 		glfwSwapBuffers(window);
@@ -306,31 +383,13 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {//鼠标回调函数
  // 计算当前位置和现在位置的差，改变两个角度，然后计算方向向量。
 	
-	float xoffset = xpos - lastX;
-	float yoffset = lastY - ypos;//y坐标从底到顶依次增大。
-	lastX = xpos;
-	lastY = ypos;
-	float sensitivity = 0.05f;
-	xoffset *= sensitivity;
-	yoffset *= sensitivity;
-
-	Yaw += xoffset;
-	Pitch += yoffset;
-	Pitch = Pitch > 89.0f ? 89.0f : Pitch;
-	Pitch = Pitch < -89.0f ? -89.0f : Pitch;
-
-	// calculate front
-	vec3 front;
-	front.x = cos(radian_news(Yaw))*cos(radian_news(Pitch));
-	front.y = sin(radian_news(Pitch));
-	front.z = sin(radian_news(Yaw))*cos(radian_news(Pitch));
-	cameraFront = front;
+	camera.SetMouse(xpos, ypos);
 	
 }
 
 int processInput(GLFWwindow *window)
 {
-	float cameraSpeed = deltaTime * 2.5f; // adjust accordingly
+	camera.SetSpeed(deltaTime * 2.5f); // adjust accordingly
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 	{
 		glfwSetWindowShouldClose(window, true);
@@ -340,14 +399,15 @@ int processInput(GLFWwindow *window)
 	if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)	return GLFW_KEY_DOWN;
 	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)	return GLFW_KEY_RIGHT;
 	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)	return GLFW_KEY_LEFT;
+
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		cameraPos += cameraSpeed * cameraFront; // 沿着摄像机指向往前走。
+		camera.ChangePos(FORWARD);
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		cameraPos -= cameraSpeed * cameraFront;
+		camera.ChangePos(BACKWARD);
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+		camera.ChangePos(LEFT);
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+		camera.ChangePos(RIGHT);
 	return 0;
 }
 
