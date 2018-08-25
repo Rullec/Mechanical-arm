@@ -17,6 +17,7 @@ public:
 	MatrixXd *GetRot(int i);				// get xyz rotation matrix, return a pointer to Rot MatrixXd 4*4
 	MatrixXd *GetRot();						// get SUM rotation matrix, return a pointer to Rot MatrixXd 4*4
 	VectorXd *GetPos();						// get the pointer to position vector: 4*1
+	void GetDerRot(int xyz, MatrixXd &res);	// get the Jacobian left mulitply matrix used in IK
 
 private:
 	MatrixXd Rot, Rotx, Roty, Rotz; // rotation matrix 4*4

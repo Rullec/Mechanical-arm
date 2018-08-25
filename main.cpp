@@ -34,7 +34,7 @@ float Pitch = 0;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 float lastX = 400, lastY = 300;
-float shininess;
+float shininess = 16;
 
 vec3 cameraPos = vec3(0.0, 0.0, 0.0); // 位置
 vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);	//摄像机面向
@@ -100,7 +100,9 @@ GLfloat cubes[] = {
 	-0.5f,  0.5f,  0.5f,
 	-0.5f,  0.5f, -0.5f,
 };
-Camera camera;
+
+Camera camera;//global camera
+JointChain *J = NULL;// JointChain
 
 int main(int argc, char** argv)
 {
@@ -148,7 +150,7 @@ int main(int argc, char** argv)
 	initPos[3] = 1;
 	double *length = new double[JointNum];
 	for (int i = 0; i < JointNum; i++) length[i] = 1;
-	JointChain *J = new JointChain(initPos, JointNum, length);
+	J = new JointChain(initPos, JointNum, length);
 	if (!J)
 	{
 		cout << "ERROR:JointInit Failed!" << endl;
@@ -194,9 +196,19 @@ int main(int argc, char** argv)
 	glEnableVertexAttribArray(3);
 	*/
 
+	//test
+	VectorXd endpos = VectorXd::Zero(3);
+	endpos[0] = -1;
+	endpos[1] = 1;
+	endpos[2] = 1.5;
+	J->SetEndPos(endpos);
+	cout << J->GetState()[J->GetNum()];
+	//test
+	
 	// set view
 	float screenWidth = 800, screenHeight = 600;
 	mat4 model, view, projection;
+
 
 	model = rotate(model, radian_news(0.0f), vec3(0.0f, 0.0f, 1.0f));// model matrix
 	view = translate(view, vec3(0.0f, 0.0f, -1.0f));//观察矩阵
@@ -249,6 +261,10 @@ int main(int argc, char** argv)
 		// Draw joints
 		//float theta = glfwGetTime();
 		//J->SetTheta(0, 2, theta / 2);
+		//J->SetTheta(0, 0, PI / 2);
+		//J->SetTheta(0, 1, PI / 2);
+
+		/*
 		timea += 0.01;
 		J->SetTheta(0, 1, timea);
 		if (timea > PI / 2)
@@ -266,6 +282,10 @@ int main(int argc, char** argv)
 				J->SetTheta(1, 2, timeb);
 			}
 		}
+		*/
+		//IK test
+		
+
 		OurShader1.use();
 		glBindVertexArray(VAO[0]);
 		VectorXd * pos = J->GetState();//opengl局部坐标系是右手系/若绕Y轴正传，当角度增大的时候，Z坐标会变负。我的Joint类是按照左手系写的…出错了。
@@ -306,11 +326,11 @@ int main(int argc, char** argv)
 			model = translate(model, tmp);
 			
 			double * theta = J->GetTheta(i);//取到的是弧度制
-			model = rotate(model, float(theta[0]), vec3(1.0, 0.0, 0.0));// A
-			model = rotate(model, float(theta[1]), vec3(0.0, 1.0, 0.0));// B
-			model = rotate(model, float(theta[2]), vec3(0.0, 0.0, 1.0)); //C
-
+			model = rotate(model, float(theta[2]), vec3(0.0, 0.0, 1.0)); //Z
+			model = rotate(model, float(theta[1]), vec3(0.0, 1.0, 0.0));// Y
+			model = rotate(model, float(theta[0]), vec3(1.0, 0.0, 0.0));// X
 			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D 转正90度，没错
+		
 			OurShader2.setMat4("model", model);
 			OurShader2.setVec3("objectColor", LinkColor);
 			OurShader2.setVec3("lightColor", lightColor);
@@ -379,7 +399,7 @@ GLFWwindow * GL_Init()
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// glad: load all OpenGL function pointers
 	// ---------------------------------------

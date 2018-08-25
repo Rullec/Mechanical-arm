@@ -36,9 +36,9 @@ int AJoint::SetTheta(int id, double theta)// set rotation theta [0,2*Pi]
 	MatrixXd tmp = MatrixXd::Identity(4, 4);
 	
 	//cout << endl << Rot << endl;
-	tmp(first, second) = -1 * sin(theta);
-	tmp(second, first) = sin(theta);
 	tmp(first, first) = cos(theta);
+	tmp(first, second) = -1 * sin(theta);
+	tmp(second, first) = sin(theta);	
 	tmp(second, second) = cos(theta);
 
 	// 左手系特例：绕Y轴旋转矩阵取反
@@ -53,7 +53,7 @@ int AJoint::SetTheta(int id, double theta)// set rotation theta [0,2*Pi]
 	case 2:Rotz = tmp; break;
 	default:assert(0);
 	}
-	Rot = Rotx * Roty * Rotz;
+	Rot = Rotz * Roty * Rotx;
 	//cout << Rot;
 	return 0;
 }
@@ -93,4 +93,39 @@ MatrixXd *AJoint::GetRot()
 VectorXd * AJoint::GetPos()// get the pointer to position vector
 {
 	return &Pos;
+}
+void AJoint::GetDerRot(int xyz, MatrixXd &res)			// get the Jacobian left mulitply matrix used in IK
+{
+
+	assert(xyz <= 2);
+
+	int first = 0, second = 1;
+	switch (xyz) {
+	case 0:first = 1, second = 2; break;
+	case 1:first = 0, second = 2; break;
+	case 2:first = 0, second = 1; break;
+	default:assert(0);
+	}
+	MatrixXd tmp = MatrixXd::Zero(4, 4);
+	//res = MatrixXd::Identity(4, 4);
+	for (int i = 0; i < 3; i++) cout << i << ": " << Theta[i] << endl;
+	cout << endl << Rot << endl;
+	tmp(first, second) = -1 * cos(Theta[xyz]);
+	tmp(second, first) = cos(Theta[xyz]);
+	tmp(first, first) = -1 * sin(Theta[xyz]);
+	tmp(second, second) = -1 * sin(Theta[xyz]);
+
+	// 左手系特例：绕Y轴旋转矩阵取反
+	if (1 == xyz)
+	{
+		tmp(first, second) = cos(Theta[xyz]);
+		tmp(second, first) = -1 * cos(Theta[xyz]);
+	}
+	cout << "tmp:\n" << tmp << endl;
+	switch (xyz) {
+	case 0:res = Rotz * Roty * tmp; break;
+	case 1:res = Rotz * tmp * Rotx; break;
+	case 2:res = tmp * Roty * Rotx; break;
+	default:assert(0);
+	}
 }
