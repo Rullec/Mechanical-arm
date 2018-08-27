@@ -4,9 +4,11 @@
 #include <fstream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include "shader.h"
 #include "JointChain.h"
+#include "Optimizer.h"
 #include "camera.h"
+#include "shader.h"
+
 using namespace std;
 typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
 
@@ -26,7 +28,7 @@ void DrawLinks();
 // --------------------------------------------------
 const float SCR_WIDTH = 800;
 const float SCR_HEIGHT = 600;
-const int JointNum = 8;
+const int JointNum = 3;
 const int SLICE_Z = 20, SLICE_XY = 20;
 float * JointLength = NULL;
 float Yaw = 0;
@@ -48,7 +50,7 @@ vec3 diffuse = vec3(0.5);
 vec3 specular = vec3(1);
 
 GLfloat sphere[72000];
-GLfloat cylinder[100000];
+GLfloat cylinder[150000];
 GLfloat axises[18] = {
 0.0f, 0.0f, 0.0f,
 3.0f, 0.0f, 0.0f,
@@ -101,8 +103,9 @@ GLfloat cubes[] = {
 	-0.5f,  0.5f, -0.5f,
 };
 
-Camera camera;//global camera
-JointChain *J = NULL;// JointChain
+Camera camera;			//global camera
+JointChain *J = NULL;	// JointChain
+Optimizer *opt;			// optimizer must be initialized with JointChain
 
 int main(int argc, char** argv)
 {
@@ -140,9 +143,9 @@ int main(int argc, char** argv)
 	DrawLinks();
 
 	// initialize Shader
-	Shader OurShader1 = Shader("./shader_ball.vs", "./shader_ball.fs"),\
-		OurShader2 = Shader("./shader_cylinder.vs", "./shader_cylinder.fs"),\
-		OurShader3 = Shader("./shader_axis.vs", "./shader_axis.fs"),\
+	Shader OurShader1 = Shader("./shader_ball.vs", "./shader_ball.fs"), \
+		OurShader2 = Shader("./shader_cylinder.vs", "./shader_cylinder.fs"), \
+		OurShader3 = Shader("./shader_axis.vs", "./shader_axis.fs"), \
 		OurShader4 = Shader("./shader_lamp.vs", "./shader_lamp.fs");
 
 	// initialize JointChain
@@ -157,6 +160,9 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
+	// initialize Optimizer
+	opt = new Optimizer(J);
+
 	// initilize VAO & VBO
 	unsigned int VBO[3], VAO[3];//0-joints 1-links
 	glGenVertexArrays(3, VAO);
@@ -167,7 +173,7 @@ int main(int argc, char** argv)
 	glBufferData(GL_ARRAY_BUFFER, sizeof(sphere), sphere, GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);
-	
+
 	glBindVertexArray(VAO[1]); // bind links
 	glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cylinder), cylinder, GL_DYNAMIC_DRAW);
@@ -188,23 +194,15 @@ int main(int argc, char** argv)
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cubes), cubes, GL_STATIC_DRAW);
 	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void *)0);
 	glEnableVertexAttribArray(3);
-	/*
-	glBindVertexArray(VAO[3]); // bind axises
-	glBindBuffer(GL_ARRAY_BUFFER, VBO[3]); // bind lamp
-	glBufferData(GL_ARRAY_BUFFER, sizeof(cubes), cubes, GL_STATIC_DRAW);
-	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void *)0);
-	glEnableVertexAttribArray(3);
-	*/
 
-	//test
+	// IK test
 	VectorXd endpos = VectorXd::Zero(3);
-	endpos[0] = -5;
-	endpos[1] = 5;
-	endpos[2] = 5.5;
+	endpos[0] = -1;
+	endpos[1] = 1;
+	endpos[2] = 1.5;
 	J->SetEndPos(endpos);
 	cout << J->GetState()[J->GetNum()];
-	//test
-	
+
 	// set view
 	float screenWidth = 800, screenHeight = 600;
 	mat4 model, view, projection;
@@ -223,7 +221,7 @@ int main(int argc, char** argv)
 	OurShader2.setMat4("view", view);
 	OurShader2.setMat4("projection", projection);
 	OurShader2.setMat4("model", model);
-	
+
 	OurShader3.use();
 	OurShader3.setMat4("view", view);
 	OurShader3.setMat4("projection", projection);
@@ -258,47 +256,25 @@ int main(int argc, char** argv)
 
 		// render
 
-		// Draw joints
-		//float theta = glfwGetTime();
-		//J->SetTheta(0, 2, theta / 2);
-		//J->SetTheta(0, 0, PI / 2);
-		//J->SetTheta(0, 1, PI / 2);
-
-		/*
-		timea += 0.01;
-		J->SetTheta(0, 1, timea);
-		if (timea > PI / 2)
-		{
-			timea = PI / 2;
-			J->SetTheta(0, 0, -1 * timeb);
-			J->SetTheta(1, 2, timeb);
-			timeb += 0.01;
-			if (timeb > PI / 2)
-			{
-				timea = 0;
-				timeb = 0;
-				J->SetTheta(0, 1, timea);
-				J->SetTheta(0, 0, -1 * timeb);
-				J->SetTheta(1, 2, timeb);
-			}
-		}
-		*/
-		//IK test
-		
-
 		OurShader1.use();
 		glBindVertexArray(VAO[0]);
 		VectorXd * pos = J->GetState();//opengl局部坐标系是右手系/若绕Y轴正传，当角度增大的时候，Z坐标会变负。我的Joint类是按照左手系写的…出错了。
-		for (int i = 0; i < JointNum; i++)
+		for (int i = 0; i <= JointNum; i++)
 		{
 			vec3 tmp;
 			tmp.x = pos[i][0];
 			tmp.y = pos[i][1];
 			tmp.z = pos[i][2];
-			//cout << pos[i] << endl;
+
+			if (JointNum == i)
+			{
+				tmp.x = endpos[0];
+				tmp.y = endpos[1];
+				tmp.z = endpos[2];
+			}
 			mat4 model;
 			model = translate(model, tmp);
-			
+
 			OurShader1.setMat4("model", model);
 			OurShader1.setVec3("objectColor", JointColor);
 			OurShader1.setVec3("lightColor", lightColor);
@@ -324,13 +300,13 @@ int main(int argc, char** argv)
 			cout << pos[i] << endl;
 			mat4 model;
 			model = translate(model, tmp);
-			
+
 			double * theta = J->GetTheta(i);//取到的是弧度制
 			model = rotate(model, float(theta[2]), vec3(0.0, 0.0, 1.0)); //Z
 			model = rotate(model, float(theta[1]), vec3(0.0, 1.0, 0.0));// Y
 			model = rotate(model, float(theta[0]), vec3(1.0, 0.0, 0.0));// X
 			model = rotate(model, radian_news(90.0f), vec3(0.0, 1.0, 0.0));// D 转正90度，没错
-		
+
 			OurShader2.setMat4("model", model);
 			OurShader2.setVec3("objectColor", LinkColor);
 			OurShader2.setVec3("lightColor", lightColor);
@@ -340,9 +316,9 @@ int main(int argc, char** argv)
 			OurShader2.setVec3("material.diffuse", vec3(1.0f, 0.5f, 0.31f));
 			OurShader2.setVec3("material.specular", vec3(0.5f, 0.5f, 0.5f));
 			OurShader2.setFloat("material.shininess", 32.0f);
-			glDrawArrays(GL_TRIANGLES, 0, 99998);
+			glDrawArrays(GL_TRIANGLES, 0, 31000);
 		}
-		
+
 		// Draw axises
 		OurShader3.use();
 		glBindVertexArray(VAO[2]);
@@ -350,7 +326,7 @@ int main(int argc, char** argv)
 		for (int i = 0; i < JointNum; i++)
 		{
 			OurShader3.setInt("axis", i);
-			glDrawArrays(GL_LINES, 2*i, 2);
+			glDrawArrays(GL_LINES, 2 * i, 2);
 		}
 
 		// Draw lamp
@@ -361,7 +337,7 @@ int main(int argc, char** argv)
 		OurShader4.setMat4("model", model);
 		glBindVertexArray(lampVAO);
 		glDrawArrays(GL_TRIANGLES, 0, 36);
-		
+
 
 		// swap buffer
 		glfwSwapBuffers(window);
@@ -399,7 +375,7 @@ GLFWwindow * GL_Init()
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// glad: load all OpenGL function pointers
 	// ---------------------------------------
@@ -438,9 +414,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {//鼠标回调函数
  // 计算当前位置和现在位置的差，改变两个角度，然后计算方向向量。
-	
+
 	camera.SetMouse(xpos, ypos);
-	
+
 }
 
 int processInput(GLFWwindow *window)
@@ -479,8 +455,8 @@ void DrawLinks()
 	double length = 1;
 	int circle_slice = 50, z_slice = 100;
 
-	circle = new double[circle_slice * 2];
-	for (int i = 0; i < circle_slice; i++)
+	circle = new double[(circle_slice+1) * 2];
+	for (int i = 0; i <= circle_slice; i++)
 	{
 		circle[2 * i + 0] = cos(1.0 * i / circle_slice * 2 * PI) * radius;
 		circle[2 * i + 1] = sin(1.0 * i / circle_slice * 2 * PI) * radius;
@@ -488,15 +464,15 @@ void DrawLinks()
 	}
 	for (int z = 0; z < z_slice; z++)
 	{
-		for (int i = 0; i < circle_slice; i++)
+		for (int i = 0; i <= circle_slice; i++)
 		{
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 0] = circle[2 * i + 0];
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 1] = circle[2 * i + 1];
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 0 * 3 + 2] = z / z_slice * length;
-				
+
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 0] = circle[2 * i + 0];
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 1] = circle[2 * i + 1];
-			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 2] = (z+1) / z_slice * length;
+			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 1 * 3 + 2] = (z + 1) / z_slice * length;
 
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 2 * 3 + 0] = circle[2 * (1 + i) + 0];
 			cylinder[z * (circle_slice * 6 * 3) + i * 6 * 3 + 2 * 3 + 1] = circle[2 * (1 + i) + 1];

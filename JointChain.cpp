@@ -1,7 +1,9 @@
 #include <iostream>
 #include <random>
 #include "JointChain.h"
+#include "Optimizer.h"
 using namespace std;
+extern Optimizer *opt;
 
 JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 {
@@ -38,6 +40,9 @@ JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 		Pos0[3] = 1;
 	}
 	Pos[Num] = Pos0;
+
+	// initilize optimizer
+	// opt.SetPtrChain(this);
 }
 
 int JointChain::SetTheta(int id, int xyz, double theta)
@@ -109,89 +114,9 @@ VectorXd JointChain::GetDerRot(int id, int xyz)
 
 void JointChain::SetEndPos(VectorXd endpos)
 {
-	
 	assert(3 == endpos.rows());
 	std::cout.precision(3);
+	//assert(1 == 0);
+	opt->use(endpos);
 	//std::cout << std::scientific;
-
-	// random initialize optimization
-	int MAX_ITER = 100;
-	double CONVERGENCE_LIMIT = 10e-8;
-	int N = JointNum * 3;
-	unsigned int status = OPTI_CONT;// 2 is continue optimize, 1 is optimize succ, 0 is optimize fail
-
-	std::random_device rd;
-	std::default_random_engine engine(rd());
-	std::uniform_int_distribution<> dis(0, 100);
-	auto dice = std::bind(dis, engine);
-	double *x = new double[N];
-	double *x_back = new double[N];
-
-	for (int i = 0; i < this->GetNum(); i++)
-	{
-		double * tmp = this->GetTheta(i);
-		for (int j = 0; j < 3; j++)
-		{
-			x_back[i * 3 + j] = tmp[j];//backup joint status, if opti fail, restore it.
-			x[i * 3 + j] = tmp[j] + 10e-5*dice();//random initialize
-		}
-	}
-	
-
-	// optimize
-	int iter = 0;
-	double f_value = 0;
-	double step = 0.01;
-	double *gradient = new double[N];
-	double *h = new double[N];
-	bool gradient_check = 1;
-	memset(gradient, 0, sizeof(double)*N);
-	memset(h, 0, sizeof(double)*N);
-	MatrixXd Jacobian = MatrixXd::Zero(3, N);
-	while (1)
-	{
-		iter++;
-
-		// update x
-		cout << "x:";
-		for (int i = 0; i < N; i++)
-		{
-			x[i] += h[i];
-			cout << x[i] << " ";
-		}
-		cout << endl;
-
-		// calculate function_value & gradient & h(x_delta)
-		evalfunc(N, x, &f_value, gradient, Jacobian, h,this, endpos, gradient_check);
-		cout << "function value:" << f_value << endl;
-		
-		// change status
-		if (f_value < CONVERGENCE_LIMIT) status = OPTI_SUCC;
-		if (iter>MAX_ITER) status = OPTI_FAIL;
-
-		// summary 
-		cout << "now:\n" << this->GetState()[this->GetNum()] << endl;
-		cout << "goal:\n" << endpos[0] << " " << endpos[1] << " " << endpos[2] << endl;
-		if (OPTI_SUCC == status)
-		{
-			cout << "optimization succ! iter:"<<iter<<endl; break;
-		}
-		else if (OPTI_FAIL == status)
-		{
-			cout << "optimization fail!\n"; break;
-		}
-	}
-	// if optimize fail, restore status
-	if (0 == OPTI_SUCC)
-	{
-		for (int i = 0; i < this->GetNum(); i++)
-		{
-			double * tmp = this->GetTheta(i);
-			for (int j = 0; j < 3; j++)
-			{
-				this->SetTheta(i, j, x_back[i * 3 + j]);// restore
-			}
-		}
-	}
-	
 }
