@@ -3,8 +3,6 @@
 #include "JointChain.h"
 using namespace std;
 
-extern void Optimize_by_HLBFGS(int N, double *init_x, int num_iter, int M, int T, bool with_hessian, VectorXd &pos);
-
 JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 {
 	assert(Pos0.rows() == 4);
@@ -32,10 +30,10 @@ JointChain::JointChain(VectorXd Pos0, int Num, double *length)
 		VectorXd tmp = VectorXd::Zero(4);
 		tmp(0) = length[i];
 		tmp(3) = 1;
-		cout << tmp;
+		//cout << tmp;
 		tmp = (*chain[i].GetRot())*tmp;
-		cout << tmp;
-		cout << Pos0;
+		//cout << tmp;
+		//cout << Pos0;
 		Pos0 += tmp;
 		Pos0[3] = 1;
 	}
@@ -111,42 +109,89 @@ VectorXd JointChain::GetDerRot(int id, int xyz)
 
 void JointChain::SetEndPos(VectorXd endpos)
 {
+	
 	assert(3 == endpos.rows());
-	std::cout.precision(8);
+	std::cout.precision(3);
 	//std::cout << std::scientific;
 
-	// initialize optimization
-	int M = 7;
-	int T = 0;
-	int N = 3 * JointNum;
-	/*
-	double t1 = 2, t2 = 1, t3 = 0;
-	double sum = pow(cos(t1)*cos(t1) + cos(t2)*cos(t2) + cos(t3)*cos(t3), 0.5);
-	endpos[0] = cos(t1) / sum;
-	endpos[1] = cos(t2) / sum;
-	endpos[2] = cos(t3) / sum;
-	*/
-	// different initialize 
+	// random initialize optimization
+	int MAX_ITER = 100;
+	double CONVERGENCE_LIMIT = 10e-8;
+	int N = JointNum * 3;
+	unsigned int status = OPTI_CONT;// 2 is continue optimize, 1 is optimize succ, 0 is optimize fail
+
 	std::random_device rd;
 	std::default_random_engine engine(rd());
 	std::uniform_int_distribution<> dis(0, 100);
 	auto dice = std::bind(dis, engine);
+	double *x = new double[N];
+	double *x_back = new double[N];
 
-	vector<double> x(N, 0);
 	for (int i = 0; i < this->GetNum(); i++)
 	{
 		double * tmp = this->GetTheta(i);
 		for (int j = 0; j < 3; j++)
 		{
-			x[i * 3 + j] = tmp[j] + 0.000001*dice();
+			x_back[i * 3 + j] = tmp[j];//backup joint status, if opti fail, restore it.
+			x[i * 3 + j] = tmp[j] + 10e-5*dice();//random initialize
 		}
 	}
-	Optimize_by_HLBFGS(N, &x[0], 1000, M, T, false, endpos);  // it is LBFGS(M) actually, T is not used
-	for (int i = 0; i < JointNum; i++)
-	{
-		for (int j = 0; j < 3; j++) this->SetTheta(i, j, x[3 * i + j]);//这个API设置的，是从(1,0,0)旋转到当前位置需要转过多少度。
-	}
-	cout << "now:\n" << this->GetState()[this->GetNum()] << endl;
-	cout << "goal:\n" << endpos[0] << " " << endpos[1] << " " << endpos[2] << endl;
+	
 
+	// optimize
+	int iter = 0;
+	double f_value = 0;
+	double step = 0.01;
+	double *gradient = new double[N];
+	double *h = new double[N];
+	bool gradient_check = 1;
+	memset(gradient, 0, sizeof(double)*N);
+	memset(h, 0, sizeof(double)*N);
+	MatrixXd Jacobian = MatrixXd::Zero(3, N);
+	while (1)
+	{
+		iter++;
+
+		// update x
+		cout << "x:";
+		for (int i = 0; i < N; i++)
+		{
+			x[i] += h[i];
+			cout << x[i] << " ";
+		}
+		cout << endl;
+
+		// calculate function_value & gradient & h(x_delta)
+		evalfunc(N, x, &f_value, gradient, Jacobian, h,this, endpos, gradient_check);
+		cout << "function value:" << f_value << endl;
+		
+		// change status
+		if (f_value < CONVERGENCE_LIMIT) status = OPTI_SUCC;
+		if (iter>MAX_ITER) status = OPTI_FAIL;
+
+		// summary 
+		cout << "now:\n" << this->GetState()[this->GetNum()] << endl;
+		cout << "goal:\n" << endpos[0] << " " << endpos[1] << " " << endpos[2] << endl;
+		if (OPTI_SUCC == status)
+		{
+			cout << "optimization succ! iter:"<<iter<<endl; break;
+		}
+		else if (OPTI_FAIL == status)
+		{
+			cout << "optimization fail!\n"; break;
+		}
+	}
+	// if optimize fail, restore status
+	if (0 == OPTI_SUCC)
+	{
+		for (int i = 0; i < this->GetNum(); i++)
+		{
+			double * tmp = this->GetTheta(i);
+			for (int j = 0; j < 3; j++)
+			{
+				this->SetTheta(i, j, x_back[i * 3 + j]);// restore
+			}
+		}
+	}
+	
 }

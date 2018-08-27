@@ -26,7 +26,7 @@ void DrawLinks();
 // --------------------------------------------------
 const float SCR_WIDTH = 800;
 const float SCR_HEIGHT = 600;
-const int JointNum = 3;
+const int JointNum = 8;
 const int SLICE_Z = 20, SLICE_XY = 20;
 float * JointLength = NULL;
 float Yaw = 0;
@@ -198,9 +198,9 @@ int main(int argc, char** argv)
 
 	//test
 	VectorXd endpos = VectorXd::Zero(3);
-	endpos[0] = -1;
-	endpos[1] = 1;
-	endpos[2] = 1.5;
+	endpos[0] = -5;
+	endpos[1] = 5;
+	endpos[2] = 5.5;
 	J->SetEndPos(endpos);
 	cout << J->GetState()[J->GetNum()];
 	//test
@@ -399,7 +399,7 @@ GLFWwindow * GL_Init()
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
-	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// glad: load all OpenGL function pointers
 	// ---------------------------------------

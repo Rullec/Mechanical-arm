@@ -1,8 +1,9 @@
 #pragma once
 #include <Eigen/Dense>
 #include "AJoint.h"
-#include "thirdparty/HLBFGS.h"
-#include "thirdparty/Lite_Sparse_Matrix.h"
+#define OPTI_SUCC 2
+#define OPTI_CONT 1
+#define OPTI_FAIL 0
 using namespace Eigen;
 
 class JointChain {
@@ -25,4 +26,4 @@ private:
 	VectorXd *Pos = NULL; // Pos用于存储铰链坐标，所以说应该是JointNum+1个元素。
 };
 
-extern const int JointNum;
+extern void evalfunc(int N, double* x, double *f, double *g, MatrixXd &Jacob, double *x_delta, JointChain *J, VectorXd end_effector, bool check);
